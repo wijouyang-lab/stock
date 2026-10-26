@@ -65,7 +65,7 @@ jobs:
       - name: 决定这次跑什么
         id: session
         run: |
-          MODE="${{ github.event.inputs.mode || 'auto' }}"
+          MODE="${{ inputs.mode || 'auto' }}"
           if [ "$MODE" = "auto" ]; then
             MODE=$(python -c "from intraday.monitor import in_session; print('scan' if in_session() else 'rank')")
           fi
@@ -95,15 +95,35 @@ jobs:
         run: |
           git config user.name  "stock-bot"
           git config user.email "stock-bot@users.noreply.github.com"
-          git add docs
-          if git diff --cached --quiet; then
-            echo "docs 无变化，跳过提交"
-            exit 0
-          fi
-          git commit -m "update $(date -u +%Y-%m-%dT%H:%MZ)"
-          # 期间可能有别的提交（手动改仓库/上一次运行），先同步再推
-          git pull --rebase --autostash origin main || true
-          git push
+          # docs/ 是纯生成物，没人工改动。如果推送时撞车（另一个运行也在写），
+          # 直接作废本次提交、重新生成再推，最多重试 3 次。
+          for i in 1 2 3; do
+            python main.py --publish docs
+            git add docs
+            if git diff --cached --quiet; then
+              echo "docs 无变化，跳过提交"
+              exit 0
+            fi
+            git commit -m "update $(date -u +%Y-%m-%dT%H:%MZ) (#$i)"
+            git fetch origin main --quiet
+            git reset --soft origin/main
+            git checkout -- docs 2>/dev/null || true
+            git add docs
+            if git diff --cached --quiet; then
+              echo "reset 后无差异，跳过"
+              exit 0
+            fi
+            git commit -m "update $(date -u +%Y-%m-%dT%H:%MZ)"
+            if git push origin HEAD:main 2>/dev/null; then
+              echo "推送成功（第 $i 次）"
+              exit 0
+            fi
+            echo "第 $i 次推送失败，重新生成后再试"
+            git reset --hard origin/main --quiet
+            sleep 5
+          done
+          echo "三次都没推上，放弃（下次运行会重试）"
+          exit 1
 
       # 只有收盘那次才更新缓存（盘中发 16 次会撑爆 10GB 配额）
       - name: 保存数据缓存
