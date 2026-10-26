@@ -56,17 +56,17 @@ jobs:
         run: pip install -r requirements.txt
 
       # 1GB 日线缓存太大，不进 git；用 Actions 缓存滚动保存
-      - name: 恢复数据缓存
-        uses: actions/cache/restore@v4
-        with:
-          # output/reports 也要缓存：否则 scan 运行拿不到上一次 rank 的榜单，
-          # 生成的页面会把"日线榜"清空
-          path: |
-            data/cache
-            output/reports
-          key: cache-${{ github.run_id }}
-          restore-keys: |
-            cache-
+      - name: 恢复数据缓存（Release 附件，不会被 LRU 淘汰）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p data output/reports
+          if gh release download data-cache -p cache.tar.gz -D /tmp 2>/dev/null; then
+            tar xzf /tmp/cache.tar.gz
+            echo "已从 Release 恢复：$(ls data/cache/daily 2>/dev/null | wc -l) 个日线分片"
+          else
+            echo "没有 Release 缓存（首次运行，会全量回补）"
+          fi
 
       - name: 决定这次跑什么
         id: session
@@ -144,11 +144,13 @@ jobs:
           exit 1
 
       # 只有收盘那次才更新缓存（盘中发 16 次会撑爆 10GB 配额）
-      - name: 保存数据缓存
+      - name: 保存数据缓存（覆盖同一个 Release 附件）
         if: steps.session.outputs.mode == 'rank'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            data/cache
-            output/reports
-          key: cache-${{ github.run_id }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tar czf /tmp/cache.tar.gz data/cache output/reports
+          ls -lh /tmp/cache.tar.gz
+          gh release view data-cache >/dev/null 2>&1 ||             gh release create data-cache --title "data-cache" --notes "数据缓存（自动维护，请勿删除）"
+          gh release upload data-cache /tmp/cache.tar.gz --clobber
+          echo "缓存已上传：$(du -h /tmp/cache.tar.gz | cut -f1)"
