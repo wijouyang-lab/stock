@@ -274,6 +274,9 @@ footer{color:var(--dim);font-size:11px;padding:10px 20px 30px}
 .health.warn{background:#3a2f10;color:#fbbf24}
 .health.bad{background:#3a1414;color:#f87171}
 .health .sub{font-weight:400;color:var(--dim);margin-left:10px}
+.countdown{padding:8px 20px;font-size:12px;color:#9fb3c8;background:#111820;border-bottom:1px solid var(--line)}
+.countdown b{color:#e6edf3;font-variant-numeric:tabular-nums}
+.countdown .k{color:#6b7c8f;margin-right:6px}
 """
 
 
@@ -314,6 +317,7 @@ def render_index() -> str:
 <title>A股筛选器 · 看板</title><style>{_CSS}</style></head>
 <body>
 <div id="health" class="health">检查数据新鲜度…</div>
+<div id="countdown" class="countdown">计算下次更新时间…</div>
 <header>
   <h1>A股筛选器 · 看板</h1>
   <span class="meta">生成于 {data['generated_at']}（北京时间）· 每 {REFRESH_SECONDS} 秒自动刷新</span>
@@ -371,6 +375,63 @@ _HEALTH_JS = """
   }
   render();
   setInterval(render, 60000);
+
+  // ---------------- 更新倒计时（客户端计算，静态页也准） ----------------
+  var cd = document.getElementById("countdown");
+  function bjNow() {
+    // 把本机时间换算成北京时间（UTC+8），手机在任何时区都对
+    var d = new Date();
+    return new Date(d.getTime() + (d.getTimezoneOffset() + 480) * 60000);
+  }
+  function hm(mm) {
+    var h = Math.floor(mm / 60), m = mm % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+  function dur(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h > 0) return h + " 小时 " + m + " 分";
+    if (m > 0) return m + " 分 " + sec + " 秒";
+    return sec + " 秒";
+  }
+  function candidates(bj) {
+    var out = [];
+    for (var off = 0; off <= 3; off++) {
+      var d = new Date(bj.getTime() + off * 86400000);
+      var wd = d.getDay();
+      if (wd === 0 || wd === 6) continue;         // 周末不更新
+      var y = d.getFullYear(), mo = d.getMonth(), da = d.getDate();
+      var marks = [];
+      for (var t = 9 * 60 + 45; t <= 11 * 60 + 30; t += 15) marks.push(t);
+      for (var u = 13 * 60 + 15; u <= 15 * 60; u += 15) marks.push(u);
+      for (var i = 0; i < marks.length; i++) {
+        var ts = new Date(y, mo, da, Math.floor(marks[i] / 60), marks[i] % 60).getTime();
+        if (ts > bj.getTime() + 20000) {
+          out.push({ ts: ts, label: (off === 0 ? "盘中榜 " : "明日盘中 ") + hm(marks[i]), kind: "intra" });
+        }
+      }
+      var tsd = new Date(y, mo, da, 22, 30).getTime();
+      if (tsd > bj.getTime() + 20000) {
+        out.push({ ts: tsd, label: "日线榜 " + (off === 0 ? "今晚" : "明晚") + " 22:30", kind: "daily" });
+      }
+    }
+    out.sort(function (a, b) { return a.ts - b.ts; });
+    return out;
+  }
+  function tick() {
+    var bj = bjNow();
+    var c = candidates(bj);
+    if (!c.length) { cd.textContent = "下个交易日开盘前无更新"; return; }
+    var next = c[0];
+    var daily = c.filter(function (x) { return x.kind === "daily"; })[0];
+    var parts = ['<span class="k">下次更新</span><b>' + next.label + "</b>（还有 " + dur(next.ts - bj.getTime()) + "）"];
+    if (daily && daily.ts !== next.ts) {
+      parts.push('<span class="k" style="margin-left:18px">｜</span><b>' + daily.label + "</b>（还有 " + dur(daily.ts - bj.getTime()) + "）");
+    }
+    cd.innerHTML = parts.join("");
+  }
+  tick();
+  setInterval(tick, 1000);
 })();
 </script>
 """
