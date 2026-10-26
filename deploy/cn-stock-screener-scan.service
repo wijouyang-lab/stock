@@ -1,0 +1,10 @@
+[Unit]
+Description=cn-stock-screener intraday scan (one shot)
+
+[Service]
+Type=oneshot
+User=stock
+WorkingDirectory=/opt/cn-stock-screener
+Environment=PYTHONUTF8=1
+Environment=TUSHARE_TOKEN=REPLACE_WITH_YOUR_TOKEN
+ExecStart=/usr/bin/python3 -m main --scan
