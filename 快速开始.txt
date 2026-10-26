@@ -1,0 +1,68 @@
+﻿================================================================
+  A股筛选器  --  换电脑后怎么用（给第一次用的人）
+================================================================
+
+【一】这台电脑需要先装 Python（只需装一次）
+  1. 打开 https://www.python.org/downloads/windows/
+  2. 下载 "Windows installer (64-bit)"，双击安装
+  3. 安装第一步务必勾选  [Add python.exe to PATH]
+  4. 装完在"开始菜单"搜 cmd 打开黑窗口，输入：
+         python --version
+     能显示版本号（3.9 以上）就成功了
+
+【二】把本项目文件夹放好
+  - 解压到任意目录，例如  D:\cn-stock-screener
+  - 建议路径只用英文，不要放在桌面（桌面路径常带中文/空格，可能出问题）
+  - 整个文件夹是一个整体，不要只拷贝其中一部分
+
+【三】装依赖（只需装一次，需要联网）
+  打开 cmd，依次执行：
+      cd /d D:\cn-stock-screener
+      python -m pip install -r requirements.txt
+
+【四】填自己的 Tushare Token（拉数据用）
+  1. 复制 .env.example，改名为 .env
+  2. 记事本打开 .env，把 TUSHARE_TOKEN= 后面换成自己的 Token
+  3. Token 在 https://tushare.pro/user/token 免费注册后获取
+  4. 说明：Token 只用于拉行情数据。本程序不调用任何大模型，不产生大模型费用。
+
+【五】检查是否装好
+      python main.py --self-test --offline
+  最后一行显示 "全部通过" 就可以了。
+
+【六】每天怎么用
+  最简单：双击  scripts\run_ranking.bat
+          （约 5 分钟，算完会自动打开结果文件夹，看最新的 .csv）
+
+  要看最新数据：
+    - 双击 scripts\run_screener.bat full     （需要 Token + 联网）
+    - 或者什么都不做，等晚上 22:30 自动跑（需先注册计划任务，见下）
+
+  再次注册自动任务（换电脑后必须重做）：
+      双击 scripts\register_task.bat          （每天 17:30 / 22:30 收盘扫描）
+      双击 scripts\register_watch_task.bat    （每 15 分钟盘中提醒，可选）
+
+【七】结果在哪里
+  output\reports\   —— 每天的榜单（.csv 可用 Excel 打开）
+  output\logs\      —— 运行日志（出问题时看这里）
+  output\alerts\    —— 盘中提醒记录
+
+【八】常见问题
+  Q: 双击 bat 闪一下就没了？
+  A: 说明 Python 没装好或没勾 PATH，回到【一】重装。
+
+  Q: 提示 Tushare Token 未配置？
+  A: 回到【四】填 .env。
+
+  Q: 提示"没有找到带评分的扫描结果"？
+  A: 先跑一次  python main.py --cli --local-only --score
+
+  Q: 能不能不联网用？
+  A: 可以。文件夹里已带 752 个交易日的行情缓存（2023-09 至 2026-10），
+     用  scripts\run_ranking.bat  即可离线看历史榜单。
+
+【九】它是什么 / 不是什么
+  是：把 Tushare 行情在本机算成技术指标 + 评分排名的小工具，
+      数据与计算全部在自己电脑上完成。
+  不是：不联网接大模型、不自动下单、不构成投资建议。
+================================================================
