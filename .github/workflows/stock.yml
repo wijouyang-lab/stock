@@ -80,7 +80,15 @@ jobs:
         if: steps.session.outputs.mode == 'scan'
         env:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
-        run: python main.py --scan
+        run: |
+          # 国内行情接口从 GitHub 美国机房偶尔会失败，重试 3 次自愈
+          ok=0
+          for i in 1 2 3; do
+            if python main.py --scan; then ok=1; break; fi
+            echo "第 $i 次扫描失败，15 秒后重试…"
+            sleep 15
+          done
+          if [ "$ok" != "1" ]; then echo "三次都没拿到行情，放弃本轮"; exit 1; fi
 
       - name: 收盘选股（非交易时段，或晚上那次）
         if: steps.session.outputs.mode == 'rank'
