@@ -1,0 +1,35 @@
+﻿# ---- 私密：Token 绝不入库 ----
+.env
+/.env
+*.env
+!.env.example
+
+# ---- 运行产物：数据缓存、日志、结果 ----
+# 目录本身保留（含 .gitkeep），内容忽略，避免把行情数据提交进仓库
+data/cache/*
+!data/cache/.gitkeep
+output/logs/*
+!output/logs/.gitkeep
+output/reports/*
+!output/reports/.gitkeep
+*.tmp
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+~$*
+
+# ---- 打包产物：内置 Token 的生成模块（由打包脚本临时创建，绝不入库）----
+_bundled_token.py
