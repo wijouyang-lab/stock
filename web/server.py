@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import threading
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -38,6 +39,9 @@ from urllib.parse import urlparse
 import config
 
 logger = logging.getLogger(__name__)
+
+#: 统一用北京时间（GitHub runner 是 UTC，不处理会导致"8 小时前"这种错觉）
+TZ_CN = timezone(timedelta(hours=8))
 
 #: 页面自动刷新间隔（秒）
 REFRESH_SECONDS = 60
@@ -131,25 +135,23 @@ def collect() -> dict:
         Path(config.REPORT_DIR) / "intraday_industry_latest.csv", limit=12)
     industry_cols, industry_rows = _select(industry_cols, industry_rows, "industry")
 
-    from datetime import date
-
-    alerts_path = Path(config.ALERT_DIR) / f"intraday_{date.today():%Y%m%d}.csv"
+    alerts_path = Path(config.ALERT_DIR) / f"intraday_{datetime.now(TZ_CN):%Y%m%d}.csv"
     alert_cols, alert_rows = _read_csv(alerts_path, limit=80)
     alert_cols, alert_rows = _select(alert_cols, alert_rows, "alerts")
 
     ranking_ts = ""
     if ranking_path is not None:
         try:
-            from datetime import datetime as _dt
-            ranking_ts = _dt.fromtimestamp(ranking_path.stat().st_mtime).isoformat(timespec="seconds")
+            ranking_ts = datetime.fromtimestamp(
+                ranking_path.stat().st_mtime, TZ_CN).isoformat(timespec="seconds")
         except Exception:  # noqa: BLE001
             pass
     intraday_path = Path(config.REPORT_DIR) / "intraday_rank_latest.csv"
     intraday_ts = ""
     if intraday_path.is_file():
         try:
-            from datetime import datetime as _dt
-            intraday_ts = _dt.fromtimestamp(intraday_path.stat().st_mtime).isoformat(timespec="seconds")
+            intraday_ts = datetime.fromtimestamp(
+                intraday_path.stat().st_mtime, TZ_CN).isoformat(timespec="seconds")
         except Exception:  # noqa: BLE001
             pass
 
@@ -194,9 +196,7 @@ def _with_sides(cols: list[str], rows: list[list[str]]) -> tuple[list[str], list
 
 
 def _now() -> str:
-    from datetime import datetime
-
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # --------------------------------------------------------------------------
@@ -275,7 +275,7 @@ def render_index() -> str:
 <div id="health" class="health">检查数据新鲜度…</div>
 <header>
   <h1>A股筛选器 · 看板</h1>
-  <span class="meta">生成于 {data['generated_at']} · 每 {REFRESH_SECONDS} 秒自动刷新</span>
+  <span class="meta">生成于 {data['generated_at']}（北京时间）· 每 {REFRESH_SECONDS} 秒自动刷新</span>
 </header>
 
 <section><h2>日线榜（每日收盘选股）{('· ' + data['ranking']['file']) if data['ranking']['file'] else ''}</h2>
