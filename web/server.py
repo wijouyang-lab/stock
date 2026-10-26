@@ -57,7 +57,9 @@ COLUMN_SPEC = {
         ("ts_code", "代码"), ("name", "名称"), ("industry", "行业"),
         ("close", "收盘"), ("pct_chg", "涨跌%"), ("ma20", "MA20"),
         ("turnover", "换手%"), ("volume_ratio_5", "量比"),
-        ("macd_side", "MACD"), ("kdj_side", "KDJ"), ("hit_count", "命中"),
+        ("macd_side", "MACD"), ("kdj_side", "KDJ"),
+        ("industry_rank", "行业排名"), ("rank_in_industry", "行业内"),
+        ("hit_count", "命中"),
     ],
     "intraday": [
         ("rank", "#"), ("industry", "行业"), ("ts_code", "代码"), ("name", "名称"),
