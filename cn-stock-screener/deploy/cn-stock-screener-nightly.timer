@@ -1,9 +1,0 @@
-[Unit]
-Description=Run nightly scan at 22:30 on weekdays
-
-[Timer]
-OnCalendar=Mon..Fri 22:30:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
