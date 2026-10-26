@@ -1147,6 +1147,21 @@ def cmd_publish(args: argparse.Namespace) -> int:
     (api / "all.json").write_text(
         _json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
+    # 把榜单原始 CSV 复制一份到 docs/data/，供下次运行兜底（缓存未命中时）
+    import shutil as _shutil
+
+    data_dir = out / "data"
+    data_dir.mkdir(exist_ok=True)
+    from web.server import _latest_scored_csv as _latest_csv
+    src_csv = _latest_csv()
+    if src_csv is not None and src_csv.is_file():
+        _shutil.copyfile(src_csv, data_dir / "ranking.csv")
+    for name, dst in (("intraday_rank_latest.csv", "intraday.csv"),
+                      ("intraday_industry_latest.csv", "industry.csv")):
+        f = Path(config.REPORT_DIR) / name
+        if f.is_file():
+            _shutil.copyfile(f, data_dir / dst)
+
     counts = {k: len((data.get(k) or {}).get("rows") or [])
               for k in ("ranking", "intraday", "industry", "alerts")}
     print(THIN)
