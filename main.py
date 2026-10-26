@@ -1225,6 +1225,18 @@ def cmd_scan(args: argparse.Namespace) -> int:
     print(THIN)
     print(f"全市场盘中扫描 | {datetime.now():%Y-%m-%d %H:%M:%S}")
     print(THIN)
+
+    # 非交易时段没有实时报价，扫了也是空的——直接跳过（退出码 0，别让工作流报红）
+    try:
+        from intraday.monitor import in_session
+
+        if not in_session() and not getattr(args, "allow_outside_session", False):
+            print("[跳过] 当前不在 A 股交易时段，盘中扫描无意义")
+            print(THIN)
+            return 0
+    except Exception:  # noqa: BLE001
+        pass
+
     t0 = time.time()
     try:
         raw = scan_market(source=args.quote_source)
