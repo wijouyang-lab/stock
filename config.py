@@ -518,6 +518,19 @@ SIGNAL_MAX_BUYS_PER_DAY = 5
 INTRADAY_SCAN_TOP = 20
 INTRADAY_SCAN_BOTTOM = 10
 
+# ==========================================================================
+# 14. 行业（板块）强度 —— 日线口径
+# ==========================================================================
+SECTOR_ENABLED = True
+#: 行业强度只统计成分股 >= 该数量的行业（避免一只票撑起一个板块）
+SECTOR_MIN_MEMBERS = 5
+#: --sector-first 时取前几个行业
+SECTOR_TOP_N = 5
+#: 每个行业最多取几只
+SECTOR_PER_INDUSTRY = 5
+#: 行业排名落后于该名次、但个股进了核心/观察档 → 标记为"逆势"
+SECTOR_CONTRARIAN_RANK = 20
+
 LOG_FORMAT = "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s"
 LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 LOG_LEVEL = os.getenv("SCREENER_LOG_LEVEL", "INFO").upper()
