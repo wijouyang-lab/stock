@@ -93,6 +93,13 @@ def _select(cols: list[str], rows: list[list[str]], key: str) -> tuple[list[str]
 
 def _latest_scored_csv() -> Path | None:
     d = Path(config.REPORT_DIR)
+    # 兜底：GitHub runner 上如果 output/reports 为空（缓存没命中），
+    # 就用上次发布时一起提交的 docs/data/ranking.csv，避免页面把榜单清空
+    published = Path(config.BASE_DIR) / "docs" / "data" / "ranking.csv"
+    if published.is_file():
+        local = [p for p in d.glob("*.csv") if p.name.startswith(("screen_", "replay_"))] if d.is_dir() else []
+        if not local:
+            return published
     if not d.is_dir():
         return None
     for p in sorted([p for p in d.glob("*.csv") if p.name.startswith(("screen_", "replay_"))],
