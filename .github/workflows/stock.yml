@@ -39,7 +39,8 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 首次 750 天回补要 2250 次调用（约 12~18 分钟），留足余量；之后都是增量 1~2 分钟
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
