@@ -33,8 +33,10 @@ permissions:
   contents: write             # 需要提交 docs/ 回仓库
 
 concurrency:
-  group: stock-scan           # 同时只跑一个，避免互相覆盖
-  cancel-in-progress: false
+  # 按模式分组：盘中扫描之间互相顶掉（15 分钟一次，不该排队），
+  # 收盘选股则排队，绝不被扫描打断（不然缓存和提交会断在半路）
+  group: stock-${{ github.event.inputs.mode || 'auto' }}
+  cancel-in-progress: ${{ (github.event.inputs.mode || 'auto') == 'scan' }}
 
 jobs:
   run:
@@ -95,8 +97,12 @@ jobs:
         env:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: |
-          # --days 500：首次补 500 个交易日（月线 MA20 需要 ~420 根，500 够）；之后都命中缓存
-          python main.py --cli --mode full --days 500 --score
+          # 有缓存就只走 10 天增量（约 30 次调用，1~2 分钟）；
+          # 没缓存才回补 500 天（月线 MA20 需要 ~420 根）——这是首跑慢的根源
+          N=$(ls data/cache/daily 2>/dev/null | wc -l)
+          if [ "$N" -gt 100 ]; then DAYS=10; else DAYS=500; fi
+          echo "本地日线分片 $N 个 → 使用 --days $DAYS"
+          python main.py --cli --mode full --days $DAYS --score
           python main.py --publish docs
 
       - name: 生成静态页
