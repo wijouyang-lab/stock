@@ -82,7 +82,8 @@ jobs:
         env:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: |
-          python main.py --cli --mode full --score
+          # --days 750：首次补 750 个交易日历史（月线 MA20 需要 ~420 根）；之后都命中缓存
+          python main.py --cli --mode full --days 750 --score
           python main.py --publish docs
 
       - name: 生成静态页
