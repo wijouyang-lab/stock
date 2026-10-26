@@ -57,7 +57,11 @@ jobs:
       - name: 恢复数据缓存
         uses: actions/cache/restore@v4
         with:
-          path: data/cache
+          # output/reports 也要缓存：否则 scan 运行拿不到上一次 rank 的榜单，
+          # 生成的页面会把"日线榜"清空
+          path: |
+            data/cache
+            output/reports
           key: cache-${{ github.run_id }}
           restore-keys: |
             cache-
@@ -130,5 +134,7 @@ jobs:
         if: steps.session.outputs.mode == 'rank'
         uses: actions/cache/save@v4
         with:
-          path: data/cache
+          path: |
+            data/cache
+            output/reports
           key: cache-${{ github.run_id }}
