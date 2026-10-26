@@ -308,7 +308,7 @@ def render_index() -> str:
     html = f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="{REFRESH_SECONDS}">
+<script>setTimeout(function(){var u=location.pathname+"?t="+Date.now();location.replace(u);}, {REFRESH_SECONDS}*1000);</script>
 <title>A股筛选器 · 看板</title><style>{_CSS}</style></head>
 <body>
 <div id="health" class="health">检查数据新鲜度…</div>
