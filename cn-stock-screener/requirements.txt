@@ -1,0 +1,12 @@
+# cn-stock-screener 依赖清单
+# 安装： python -m pip install -r requirements.txt
+#
+# 说明：
+#   - tushare 是唯一的数据源 SDK（自带 requests / bs4 / simplejson 等依赖）
+#   - pandas 用于数据处理与缓存分片
+#   - python-dotenv 用于读取项目内 .env（缺失时 config.py 会自动回退到内置解析器）
+#   - GUI 使用标准库 tkinter，无需额外安装（Windows 官方 Python 安装包自带）
+
+tushare>=1.2.89
+pandas>=1.5.0
+python-dotenv>=1.0.0
