@@ -630,6 +630,7 @@ _BASE_PANEL_COLS = frozenset({
 
 #: CSV 里优先展示的列（存在则排前面，其余列自动跟在后面）
 _CSV_FIRST_COLS = (
+    "sector_bucket", "industry_rank", "rank_in_industry", "industry_up_days", "contrarian",
     "score", "tier", "hit_count",
     "ts_code", "name", "industry", "trade_date", "close", "pct_chg", "turnover",
     "turnover_rate", "volume_ratio_5", "ma20", "dif", "dea", "macd", "k", "d", "j",
@@ -858,6 +859,27 @@ def screen_local(
             except Exception as exc:  # noqa: BLE001
                 logger.warning("信号更新失败（不影响筛选）：%s", exc)
 
+        # ---- 3e) 行业（板块）强度：日线口径，先看板块再看个股 ----
+        sector_df = None
+        if getattr(config, "SECTOR_ENABLED", True):
+            try:
+                from screener.sector import analyze as analyze_sector, attach as attach_sector
+
+                merged, sector_df = analyze_sector(merged, trade_date)
+                merged = attach_sector(merged, sector_df)
+                if sector_df is not None and not sector_df.empty:
+                    print(THIN)
+                    print("行业强度（5日涨幅50% + 站上MA20比例30% + 资金占比变化20%）")
+                    print(f"{'#':<4}{'行业':<14}{'家数':>5}{'5日涨幅':>9}{'站上MA20':>10}"
+                          f"{'资金占比变动':>13}{'连续上升':>9}")
+                    print("-" * 76)
+                    for r in sector_df.head(10).itertuples(index=False):
+                        print(f"{r.rank:<4}{str(r.industry)[:12]:<14}{r.members:>5}"
+                              f"{r.ret5:>+8.2f}%{r.breadth * 100:>9.0f}%"
+                              f"{r.amount_share_chg * 100:>+12.2f}%{int(r.rank_up_days):>9}天")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("行业强度计算失败（不影响筛选）：%s", exc)
+
         # ---- 4) 筛选 ----
         # 评分模式且未显式给 --filters 时，默认不做漏斗（输出全市场评分排行）
         if scorer is not None and getattr(args, "filters", None) is None:
@@ -897,6 +919,28 @@ def screen_local(
                 "档位裁剪：入榜 %d 只（截断 %d，低于门槛剔除 %d）",
                 len(capped), cap_stats.get("capped", 0), cap_stats.get("dropped", 0),
             )
+
+        # ---- 4c) 行业优先（--sector-first）：前 N 行业内选股，逆势股另册 ----
+        if getattr(args, "sector_first", False) and "industry_rank" in merged.columns:
+            try:
+                from screener.sector import sector_first
+
+                # 从"全部有档位的候选"里按行业挑，而不是从已截断的 15 只里挑
+                pool = merged[merged["tier"].astype(str) != ""] if "tier" in merged.columns else merged
+                main_df, contra = sector_first(pool) if not pool.empty else (pool, pool)
+                if not contra.empty:
+                    screened.matched = pd.concat([main_df, contra], ignore_index=True)
+                else:
+                    screened.matched = main_df
+                print(THIN)
+                print(f"行业优先：前 {config.SECTOR_TOP_N} 行业内各取 ≤{config.SECTOR_PER_INDUSTRY} 只 "
+                      f"→ 主榜 {len(main_df)} 只"
+                      + (f"，逆势强势股另册 {len(contra)} 只" if len(contra) else ""))
+                if not contra.empty:
+                    print("  【逆势】" + "、".join(
+                        str(x) for x in contra.get("name", contra.get("ts_code")).head(10)))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("行业优先筛选失败（保留原榜单）：%s", exc)
 
         # ---- 5) 落盘 ----
         out_files = _write_screen_outputs(
@@ -1316,6 +1360,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="入榜最低分（默认取 config.SCORE_TIERS['candidate']=65）")
     p.add_argument("--no-caps", action="store_true",
                    help="不按档位名额限制（默认核心5/观察10/候选15）")
+    p.add_argument("--sector-first", action="store_true",
+                   help="先取行业强度前 N，再在行业内选股（逆势强势股另册输出）")
 
     # ---- 盘中盯梢（免费快照源，不需要 Tushare Token）----
     p.add_argument("--loop", action="store_true",
