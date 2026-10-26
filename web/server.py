@@ -113,6 +113,18 @@ def _latest_scored_csv() -> Path | None:
     return None
 
 
+def _published_json(key: str) -> tuple[list[str], list[list[str]], dict]:
+    """读上次发布到 docs/api/ 的 JSON（列名已是中文，可直接复用）。"""
+    path = Path(config.BASE_DIR) / "docs" / "api" / f"{key}.json"
+    if not path.is_file():
+        return [], [], {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return [], [], {}
+    return list(payload.get("columns") or []), list(payload.get("rows") or []), payload
+
+
 def _read_csv(path: Path | None, limit: int = 60) -> tuple[list[str], list[list[str]]]:
     if path is None or not path.is_file():
         return [], []
@@ -161,6 +173,26 @@ def collect() -> dict:
                 intraday_path.stat().st_mtime, TZ_CN).isoformat(timespec="seconds")
         except Exception:  # noqa: BLE001
             pass
+
+    # 本次没产出的部分，沿用上次发布的 JSON：
+    # scan 不会生成日线榜、rank 不会生成盘中榜，缺的那块不该被清空
+    if not ranking_rows:
+        c, r, _ = _published_json("ranking")
+        if r:
+            ranking_cols, ranking_rows = c, r
+            ranking_ts = _published_json("all")[2].get("data_ts") or ranking_ts
+    if not intraday_rows:
+        c, r, _ = _published_json("intraday")
+        if r:
+            intraday_cols, intraday_rows = c, r
+    if not industry_rows:
+        c, r, _ = _published_json("industry")
+        if r:
+            industry_cols, industry_rows = c, r
+    if not alert_rows:
+        c, r, _ = _published_json("alerts")
+        if r:
+            alert_cols, alert_rows = c, r
 
     return {
         "generated_at": _now(),
