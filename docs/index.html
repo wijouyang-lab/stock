@@ -35,14 +35,15 @@ footer{color:var(--dim);font-size:11px;padding:10px 20px 30px}
 .health .sub{font-weight:400;color:var(--dim);margin-left:10px}
 .countdown{padding:8px 20px;font-size:12px;color:#9fb3c8;background:#111820;border-bottom:1px solid var(--line)}
 .countdown b{color:#e6edf3;font-variant-numeric:tabular-nums}
-.countdown .k{color:#6b7c8f;margin-right:6px}
+.countdown .k{color:#6b7c8f;margin-right:8px;display:inline-block;min-width:150px}
+.countdown .cd-row{padding:3px 0}
 </style></head>
 <body>
 <div id="health" class="health">检查数据新鲜度…</div>
 <div id="countdown" class="countdown">计算下次更新时间…</div>
 <header>
   <h1>A股筛选器 · 看板</h1>
-  <span class="meta">生成于 2026-10-26 22:58:05（北京时间）· 每 60 秒自动刷新</span>
+  <span class="meta">生成于 2026-10-26 23:03:38（北京时间）· 每 60 秒自动刷新</span>
 </header>
 
 <section><h2>日线榜（每日收盘选股）</h2>
@@ -135,17 +136,36 @@ footer{color:var(--dim);font-size:11px;padding:10px 20px 30px}
     out.sort(function (a, b) { return a.ts - b.ts; });
     return out;
   }
+  function inSession(bj) {
+    var wd = bj.getDay();
+    if (wd === 0 || wd === 6) return false;
+    var mins = bj.getHours() * 60 + bj.getMinutes();
+    return (mins >= 570 && mins <= 690) || (mins >= 780 && mins <= 900);
+  }
+  var dataDate = (dataTs || "").slice(0, 10);
   function tick() {
     var bj = bjNow();
     var c = candidates(bj);
-    if (!c.length) { cd.textContent = "下个交易日开盘前无更新"; return; }
-    var next = c[0];
+    if (!c.length) { cd.innerHTML = '<div class="cd-row">下个交易日开盘前无更新</div>'; return; }
+    var intra = c.filter(function (x) { return x.kind === "intra"; })[0];
     var daily = c.filter(function (x) { return x.kind === "daily"; })[0];
-    var parts = ['<span class="k">下次更新</span><b>' + next.label + "</b>（还有 " + dur(next.ts - bj.getTime()) + "）"];
-    if (daily && daily.ts !== next.ts) {
-      parts.push('<span class="k" style="margin-left:18px">｜</span><b>' + daily.label + "</b>（还有 " + dur(daily.ts - bj.getTime()) + "）");
+    var rows = [];
+
+    if (intra) {
+      var open = inSession(bj);
+      var label = intra.label.replace("盘中榜 ", "").replace("明日盘中 ", "明日 ");
+      rows.push('<div class="cd-row"><span class="k">盘中榜 · 每 15 分钟</span>'
+        + (open ? "下次 " : '<span style="color:#6b7c8f">休市中</span> ')
+        + "<b>" + label + "</b>（还有 " + dur(intra.ts - bj.getTime()) + "）</div>");
     }
-    cd.innerHTML = parts.join("");
+    if (daily) {
+      var dd = dataDate ? dataDate.slice(5).replace("-", "/") : "";
+      rows.push('<div class="cd-row"><span class="k">日线榜 · 每晚 22:30</span>'
+        + (dd ? "当前数据 <b>" + dd + "</b>（供下一交易日开盘）· " : "")
+        + "下次刷新 <b>" + daily.label.replace("日线榜 ", "") + "</b>（还有 "
+        + dur(daily.ts - bj.getTime()) + "）</div>");
+    }
+    cd.innerHTML = rows.join("");
   }
   tick();
   setInterval(tick, 1000);
