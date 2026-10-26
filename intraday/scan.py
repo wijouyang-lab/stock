@@ -12,6 +12,7 @@ intraday.scan — 全市场盘中扫描（每 15 分钟一个"当下最强/最�
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +54,15 @@ def universe_codes() -> list[str]:
 
 def scan_market(codes: list[str] | None = None, source: str | None = None) -> pd.DataFrame:
     """抓全市场快照并整理成 DataFrame（按涨幅降序）。"""
+    # 优先东财列表（请求少、对海外机房宽容）；失败再回退逐只快照
+    if not codes:
+        try:
+            em = scan_market_em()
+            if not em.empty:
+                return em
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("东财列表不可用，回退逐只快照：%s", exc)
+
     codes = codes or universe_codes()
     if not codes:
         return pd.DataFrame(columns=list(SCAN_COLUMNS))
@@ -75,6 +85,97 @@ def scan_market(codes: list[str] | None = None, source: str | None = None) -> pd
     df = pd.DataFrame(rows, columns=list(SCAN_COLUMNS))
     if df.empty:
         return df
+    return df.sort_values("pct_chg", ascending=False, kind="mergesort").reset_index(drop=True)
+
+
+# --------------------------------------------------------------------------
+# 东财行情列表（一次 100 行，全市场约 56 页）——比逐只抓快照省 70% 的请求
+# --------------------------------------------------------------------------
+_EM_URL = ("http://push2.eastmoney.com/api/qt/clist/get?"
+           "pn={pn}&pz=100&po={po}&np=1&fltt=2&invt=2&fid=f3"
+           "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
+           "&fields=f12,f14,f2,f3,f8,f6")
+
+
+def _ts_code_from_em(code: str) -> str:
+    c = str(code).zfill(6)
+    if c.startswith(("60", "68", "90")):
+        return f"{c}.SH"
+    if c.startswith(("00", "30", "20")):
+        return f"{c}.SZ"
+    if c.startswith(("4", "8", "92")):
+        return f"{c}.BJ"
+    return f"{c}.SZ"
+
+
+def scan_market_em(pages_top: int = 3, pages_bottom: int = 1, timeout: int = 15) -> pd.DataFrame:
+    """用东财行情列表接口扫全市场（每页 100 只）。
+
+    相比逐只抓腾讯快照（约 126 次请求），这里只要 ~56 次，且东财对海外机房更宽容。
+    """
+    import urllib.request as _req
+
+    import time as _time
+
+    rows: list[dict] = []
+    failed_pages = 0
+    # 东财已按涨幅排序：第 1 页就是涨幅榜前 100。
+    # 只取"涨幅前 pages_top 页 + 跌幅前 pages_bottom 页"（4 次请求），
+    # 不翻全市场 56 页——那样必被限流。
+    plan = [(pn, 1) for pn in range(1, pages_top + 1)]
+    plan += [(pn, 0) for pn in range(1, pages_bottom + 1)]
+    for pn, po in plan:
+        url = _EM_URL.format(pn=pn, po=po)
+        payload = None
+        # 单页最多试 2 次；页间 120ms 间隔，避免被断流
+        for attempt in range(2):
+            try:
+                r = _req.Request(url, headers={"User-Agent": "Mozilla/5.0",
+                                               "Referer": "https://quote.eastmoney.com/"})
+                with _req.urlopen(r, timeout=timeout) as resp:
+                    payload = json.loads(resp.read().decode("utf-8", "replace"))
+                break
+            except Exception as exc:  # noqa: BLE001
+                if attempt == 0:
+                    _time.sleep(0.4)
+                else:
+                    failed_pages += 1
+                    logger.debug("东财第 %d 页失败：%s", pn, exc)
+        if payload is None:
+            if failed_pages >= 3:      # 连续失败太多就收手，别死等
+                logger.warning("东财列表连续失败 %d 页，提前结束（已取 %d 只）", failed_pages, len(rows))
+                break
+            continue
+        failed_pages = 0
+        _time.sleep(0.12)
+        data = payload.get("data") or {}
+        diff = data.get("diff") or []
+        if not diff:
+            break
+        for x in diff:
+            price = x.get("f2")
+            if not isinstance(price, (int, float)) or price <= 0:
+                continue
+            pct = x.get("f3")
+            turn = x.get("f8")
+            amt = x.get("f6")
+            rows.append({
+                "ts_code": _ts_code_from_em(x.get("f12")),
+                "name": str(x.get("f14") or ""),
+                "price": float(price),
+                "pct_chg": float(pct) if isinstance(pct, (int, float)) else None,
+                "turnover_rate": float(turn) if isinstance(turn, (int, float)) else None,
+                "amount_wan": round(float(amt) / 10000.0, 1) if isinstance(amt, (int, float)) else None,
+                "prev_close": None,
+                "quote_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            })
+        if len(diff) < 100:
+            continue
+
+    df = pd.DataFrame(rows, columns=list(SCAN_COLUMNS))
+    if df.empty:
+        return df
+    logger.info("东财列表：%d 只（涨幅前 %d 页 + 跌幅前 %d 页）", len(df), pages_top, pages_bottom)
     return df.sort_values("pct_chg", ascending=False, kind="mergesort").reset_index(drop=True)
 
 
@@ -358,7 +459,7 @@ def industry_table(scored: pd.DataFrame, top: int = 10) -> pd.DataFrame:
 
 
 __all__ = [
-    "universe_codes", "scan_market", "top_movers", "save_scan", "format_table",
+    "universe_codes", "scan_market", "scan_market_em", "top_movers", "save_scan", "format_table",
     "score_market", "pick_by_industry", "industry_table", "enrich_picks", "load_industry",
     "load_daily_scores", "SCAN_COLUMNS", "RANK_COLUMNS",
 ]
