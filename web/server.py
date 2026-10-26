@@ -137,8 +137,26 @@ def collect() -> dict:
     alert_cols, alert_rows = _read_csv(alerts_path, limit=80)
     alert_cols, alert_rows = _select(alert_cols, alert_rows, "alerts")
 
+    ranking_ts = ""
+    if ranking_path is not None:
+        try:
+            from datetime import datetime as _dt
+            ranking_ts = _dt.fromtimestamp(ranking_path.stat().st_mtime).isoformat(timespec="seconds")
+        except Exception:  # noqa: BLE001
+            pass
+    intraday_path = Path(config.REPORT_DIR) / "intraday_rank_latest.csv"
+    intraday_ts = ""
+    if intraday_path.is_file():
+        try:
+            from datetime import datetime as _dt
+            intraday_ts = _dt.fromtimestamp(intraday_path.stat().st_mtime).isoformat(timespec="seconds")
+        except Exception:  # noqa: BLE001
+            pass
+
     return {
         "generated_at": _now(),
+        "data_ts": ranking_ts,
+        "intraday_ts": intraday_ts,
         "ranking": {"file": ranking_path.name if ranking_path else None,
                     "columns": ranking_cols, "rows": ranking_rows},
         "intraday": {"columns": intraday_cols, "rows": intraday_rows},
@@ -210,6 +228,11 @@ td.down{color:var(--down)}
 .empty{padding:18px 14px;color:var(--dim)}
 .wrap{max-height:460px;overflow:auto}
 footer{color:var(--dim);font-size:11px;padding:10px 20px 30px}
+.health{padding:9px 20px;font-size:12px;font-weight:600;border-bottom:1px solid var(--line)}
+.health.ok{background:#12301c;color:#4ade80}
+.health.warn{background:#3a2f10;color:#fbbf24}
+.health.bad{background:#3a1414;color:#f87171}
+.health .sub{font-weight:400;color:var(--dim);margin-left:10px}
 """
 
 
@@ -243,12 +266,13 @@ def _table(cols: list[str], rows: list[list[str]], limit: int = 60) -> str:
 
 def render_index() -> str:
     data = collect()
-    return f"""<!doctype html>
+    html = f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="{REFRESH_SECONDS}">
 <title>A股筛选器 · 看板</title><style>{_CSS}</style></head>
 <body>
+<div id="health" class="health">检查数据新鲜度…</div>
 <header>
   <h1>A股筛选器 · 看板</h1>
   <span class="meta">生成于 {data['generated_at']} · 每 {REFRESH_SECONDS} 秒自动刷新</span>
@@ -269,6 +293,53 @@ def render_index() -> str:
 <footer>本页仅展示本地计算结果，不构成投资建议。数据：Tushare（日线）+
 腾讯/新浪（实时快照）+ 东财（15分钟K线）。</footer>
 </body></html>"""
+    return html.replace("</body>", _health_script(data.get("data_ts") or "") + "\n</body>", 1)
+
+
+#: 健康条脚本：数据新鲜度在**浏览器端**计算，静态页放几天也能判断是否过期
+_HEALTH_JS = """
+<script>
+(function () {
+  var dataTs = "__TS__";
+  var el = document.getElementById("health");
+  if (!el) return;
+  function human(h) {
+    if (h < 1) return "不到 1 小时";
+    if (h < 48) return Math.round(h) + " 小时";
+    return Math.round(h / 24) + " 天";
+  }
+  function render() {
+    if (!dataTs) {
+      el.className = "health bad";
+      el.innerHTML = "\u26a0 还没有榜单数据<span class='sub'>去 GitHub Actions 看是否跑过 rank 模式</span>";
+      return;
+    }
+    var t = new Date(dataTs);
+    var h = (Date.now() - t.getTime()) / 3600000;
+    var when = t.toLocaleString("zh-CN", {month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"});
+    if (h <= 30) {
+      el.className = "health ok";
+      el.innerHTML = "\u2713 数据正常<span class='sub'>榜单更新于 " + when + "（" + human(h) + "前）</span>";
+    } else if (h <= 80) {
+      el.className = "health warn";
+      el.innerHTML = "\u25b3 数据可能未更新<span class='sub'>最后更新 " + when + "（" + human(h) + "前）\u00b7 若今天是交易日且已过 22:30，检查 GitHub Actions</span>";
+    } else {
+      el.className = "health bad";
+      el.innerHTML = "\u2715 数据已过期<span class='sub'>最后更新 " + when + "（" + human(h) + "前）\u00b7 多半是定时任务挂了</span>";
+    }
+  }
+  render();
+  setInterval(render, 60000);
+})();
+</script>
+"""
+
+
+def _health_script(data_ts: str) -> str:
+    """生成健康条脚本，注入数据时间戳。"""
+    import json as _json
+    safe = _json.dumps(data_ts or "")[1:-1]      # 转义为 JS 字符串内容
+    return _HEALTH_JS.replace("__TS__", safe)
 
 
 # --------------------------------------------------------------------------
