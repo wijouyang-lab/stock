@@ -10,3 +10,5 @@
 tushare>=1.2.89
 pandas>=1.5.0
 python-dotenv>=1.0.0
+# tushare 依赖 pkg_resources（新版 Python 镜像默认不再自带 setuptools）
+setuptools>=68
