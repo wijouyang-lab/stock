@@ -53,7 +53,12 @@ jobs:
           cache: pip
 
       - name: 安装依赖
-        run: pip install -r requirements.txt
+        run: |
+          # 必须用 python -m pip：裸 pip 可能指向另一个解释器，
+          # 装好了但 python 里 import 不到（本项目踩过这个坑）
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -c "import tushare, pandas; print('tushare', tushare.__version__, '| pandas', pandas.__version__)"
 
       # 1GB 日线缓存太大，不进 git；用 Actions 缓存滚动保存
       - name: 恢复数据缓存（Release 分片附件）
