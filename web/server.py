@@ -55,9 +55,10 @@ COLUMN_SPEC = {
     "ranking": [
         ("score", "评分"), ("tier", "档位"), ("signal", "信号"), ("state", "状态"),
         ("ts_code", "代码"), ("name", "名称"), ("industry", "行业"),
-        ("close", "收盘"), ("pct_chg", "涨跌%"), ("ma20", "MA20"),
+        # 换手/量比/MACD/KDJ 紧跟行业，方便横向比较同一板块的活跃度
         ("turnover", "换手%"), ("volume_ratio_5", "量比"),
         ("macd_side", "MACD"), ("kdj_side", "KDJ"),
+        ("close", "收盘"), ("pct_chg", "涨跌%"), ("ma20", "MA20"),
         ("industry_rank", "行业排名"), ("rank_in_industry", "行业内"),
         ("hit_count", "命中"),
     ],
@@ -91,6 +92,29 @@ def _select(cols: list[str], rows: list[list[str]], key: str) -> tuple[list[str]
     out_cols = [label for _, label in keep]
     out_rows = [[row[index[c]] for c, _ in keep] for row in rows]
     return out_cols, out_rows
+
+
+def _sort_by_score(
+    cols: list[str], rows: list[list[str]]
+) -> tuple[list[str], list[list[str]]]:
+    """按评分从高到低排序（列名可能是 score 或已发布的"评分"）。"""
+    if not cols or not rows:
+        return cols, rows
+    idx = -1
+    for key in ("score", "评分"):
+        if key in cols:
+            idx = cols.index(key)
+            break
+    if idx < 0:
+        return cols, rows
+
+    def key(row: list[str]) -> float:
+        try:
+            return -float(row[idx])
+        except (TypeError, ValueError, IndexError):
+            return 0.0
+
+    return cols, sorted(rows, key=key)
 
 
 def _latest_scored_csv() -> Path | None:
@@ -149,6 +173,7 @@ def collect() -> dict:
     ranking_cols, ranking_rows = _read_csv(ranking_path, limit=60)
     ranking_cols, ranking_rows = _with_sides(ranking_cols, ranking_rows)
     ranking_cols, ranking_rows = _select(ranking_cols, ranking_rows, "ranking")
+    ranking_cols, ranking_rows = _sort_by_score(ranking_cols, ranking_rows)
     intraday_cols, intraday_rows = _read_csv(
         Path(config.REPORT_DIR) / "intraday_rank_latest.csv", limit=40)
     intraday_cols, intraday_rows = _select(intraday_cols, intraday_rows, "intraday")
@@ -183,6 +208,7 @@ def collect() -> dict:
         if r:
             ranking_cols, ranking_rows = c, r
             ranking_ts = _published_json("all")[2].get("data_ts") or ranking_ts
+    ranking_cols, ranking_rows = _sort_by_score(ranking_cols, ranking_rows)
     if not intraday_rows:
         c, r, _ = _published_json("intraday")
         if r:
@@ -263,6 +289,8 @@ th,td{padding:6px 10px;text-align:right;white-space:nowrap;
 th{position:sticky;top:0;background:#1b242d;color:var(--dim);font-weight:500;
    text-align:right;z-index:1}
 th:nth-child(-n+5),td:nth-child(-n+5){text-align:left}
+th.c-ind,td.c-ind{width:76px;max-width:76px;padding-left:6px;padding-right:4px;text-align:left}
+.ind{max-width:66px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 tbody tr:hover{background:rgba(35,48,64,.45)}
 td.up{color:var(--up)}
 td.down{color:var(--down)}
@@ -290,16 +318,28 @@ def _cell_class(value: str) -> str:
     return ""
 
 
+#: 这些列内容短、但要占满一整列很浪费宽度 —— 单独收窄
+_NARROW_COLS = {"行业"}
+
+
 def _table(cols: list[str], rows: list[list[str]], limit: int = 60) -> str:
     if not cols:
         return '<div class="empty">暂无数据</div>'
-    head = "".join(f"<th>{html.escape(c)}</th>" for c in cols)
+    narrow = {i for i, c in enumerate(cols) if c in _NARROW_COLS}
+    head = "".join(
+        f'<th class="c-ind">{html.escape(c)}</th>' if i in narrow else f"<th>{html.escape(c)}</th>"
+        for i, c in enumerate(cols)
+    )
     body = []
     for row in rows[:limit]:
-        tds = "".join(
-            f"<td{_cell_class(v)}>{html.escape(str(v))}</td>" for v in row
-        )
-        body.append(f"<tr>{tds}</tr>")
+        cells = []
+        for i, v in enumerate(row):
+            text = html.escape(str(v))
+            if i in narrow:
+                cells.append(f'<td class="c-ind"><div class="ind">{text}</div></td>')
+            else:
+                cells.append(f"<td{_cell_class(v)}>{text}</td>")
+        body.append("<tr>" + "".join(cells) + "</tr>")
     return (
         '<div class="wrap"><table><thead><tr>'
         + head
