@@ -290,8 +290,8 @@ class TushareClient:
         except Exception as exc:  # noqa: BLE001
             self._import_error = str(exc)
             raise DependencyMissingError(
-                "未安装 tushare。请在项目根目录执行： "
-                "python -m pip install -r requirements.txt"
+                "导入 tushare 失败。请在项目根目录执行： "
+                f"python -m pip install -r requirements.txt  （真实错误：{type(exc).__name__}: {exc}）"
             ) from exc
 
         self.require_token()
