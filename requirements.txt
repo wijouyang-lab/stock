@@ -12,3 +12,5 @@ pandas>=1.5.0
 python-dotenv>=1.0.0
 # tushare 依赖 pkg_resources（新版 Python 镜像默认不再自带 setuptools）
 setuptools>=68
+# tushare 1.4.x 的 trader 模块 import six，但它自己没声明这个依赖
+six>=1.16
